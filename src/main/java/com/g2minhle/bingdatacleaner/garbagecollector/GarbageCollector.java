@@ -40,6 +40,7 @@ import com.google.api.services.drive.model.FileList;
 public class GarbageCollector implements RequestHandler<Object, String> {
 
 	static final String GOOGLE_CLIENT_SECRET_ENV_VAR = "GOOGLE_CLIENT_SECRET";
+	static final String PARENT_FOLDER_ID_ENV_VAR = "PARENT_FOLDER_ID";
 	static final String DYNAMO_DB_TABLE_ENV_VAR = "DYNAMO_DB_TABLE";
 	
 	static DateTime currentTime = new org.joda.time.DateTime(new Date());
@@ -47,6 +48,7 @@ public class GarbageCollector implements RequestHandler<Object, String> {
 	static Drive DriveServices = null;
 	static BatchRequest CleanRequests;
 	static List<String> DeleteFileQueue = new LinkedList<String>();
+	static String parentFolderId;
 	static JsonBatchCallback<Void> DoNothingCallBack = new JsonBatchCallback<Void>() {
 		@Override
 		public void onFailure(GoogleJsonError e, HttpHeaders responseHeaders)
@@ -69,6 +71,10 @@ public class GarbageCollector implements RequestHandler<Object, String> {
 
 				public void onSuccess(File file, HttpHeaders responseHeaders)
 						throws IOException {
+					
+					if(file.getParents() == null) return;
+					if(!file.getParents().contains(parentFolderId)) return;
+					
 					DateTime fileCreationTime =
 							new DateTime(file.getCreatedTime().getValue());
 
@@ -102,6 +108,7 @@ public class GarbageCollector implements RequestHandler<Object, String> {
 			return;
 		}
 		String clientSecret = System.getenv(GOOGLE_CLIENT_SECRET_ENV_VAR);
+		parentFolderId = System.getenv(PARENT_FOLDER_ID_ENV_VAR);
 		InputStream in = new ByteArrayInputStream(clientSecret.getBytes());
 		
 		GoogleCredential credential;
@@ -147,12 +154,14 @@ public class GarbageCollector implements RequestHandler<Object, String> {
 		CleanRequests = DriveServices.batch();
 
 		for (File file : files) {
-			System.out.println(file.getId());
-			DriveServices.files().get(file.getId()).setFields("createdTime,id")
+			System.out.println(file.getId());			
+			DriveServices.files().get(file.getId()).setFields("createdTime,id,parents")
 					.queue(getFileCreationDateRequests, QueueForDeleteCallBack);
 		}
 		getFileCreationDateRequests.execute();
-		CleanRequests.execute();		
+		if (CleanRequests.size() > 0 ){
+			CleanRequests.execute();	
+		}
 	}
 
 	private void cleanOldDBEntry() {
