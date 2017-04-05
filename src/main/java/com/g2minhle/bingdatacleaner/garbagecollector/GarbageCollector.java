@@ -1,5 +1,6 @@
 package com.g2minhle.bingdatacleaner.garbagecollector;
 
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.security.GeneralSecurityException;
@@ -38,7 +39,9 @@ import com.google.api.services.drive.model.FileList;
 
 public class GarbageCollector implements RequestHandler<Object, String> {
 
-	static final String PARENT_FOLDER_ID = "0B65PxeIkFoQIZTFaMGRqX1JkUGs";
+	static final String GOOGLE_CLIENT_SECRET_ENV_VAR = "GOOGLE_CLIENT_SECRET";
+	static final String DYNAMO_DB_TABLE_ENV_VAR = "DYNAMO_DB_TABLE";
+	
 	static DateTime currentTime = new org.joda.time.DateTime(new Date());
 
 	static Drive DriveServices = null;
@@ -98,8 +101,9 @@ public class GarbageCollector implements RequestHandler<Object, String> {
 			e.printStackTrace();
 			return;
 		}
-		InputStream in =
-				GarbageCollector.class.getResourceAsStream("/client_secret.json");
+		String clientSecret = System.getenv(GOOGLE_CLIENT_SECRET_ENV_VAR);
+		InputStream in = new ByteArrayInputStream(clientSecret.getBytes());
+		
 		GoogleCredential credential;
 		try {
 			credential = GoogleCredential.fromStream(in).createScoped(GoogleAPIScopes);
@@ -153,7 +157,7 @@ public class GarbageCollector implements RequestHandler<Object, String> {
 
 	private void cleanOldDBEntry() {
 		DynamoDB DynamoDBInstance = new DynamoDB(new AmazonDynamoDBClient());
-		Table Table = DynamoDBInstance.getTable("BingDataCleaner");
+		Table Table = DynamoDBInstance.getTable(System.getenv(DYNAMO_DB_TABLE_ENV_VAR));
 
 		ItemCollection<ScanOutcome> scanResults = Table.scan();
 		List<PrimaryKey> keysToDelete = new LinkedList<PrimaryKey>();
@@ -187,15 +191,15 @@ public class GarbageCollector implements RequestHandler<Object, String> {
 	}
 	
 	public static void main(String[] args) throws IOException {
-		GarbageCollector a = new GarbageCollector();
+		GarbageCollector garbageCollector = new GarbageCollector();
 		try {
-			a.cleanOldSheets();
+			garbageCollector.cleanOldSheets();
 		} catch (IOException e) {
 			
 			// TODO Auto-generated catch block
 			e.printStackTrace();
 		}
-		a.cleanOldDBEntry();
+		garbageCollector.cleanOldDBEntry();
 	}
 
 }
